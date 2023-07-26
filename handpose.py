@@ -66,15 +66,11 @@ def is_closed(finger, lmList):
         d2 = dist(lmList[indexOf(finger, 2)][1], lmList[indexOf(finger, 2)][2], lmList[0][1], lmList[0][2])
     return d1 < d2
 
-# wCam, hCam = 640, 480
+wCam, hCam = 640, 480
 
-# cap = cv2.VideoCapture(0)
-# cap.set(3, wCam)
-# cap.set(4, hCam)
-
-import vcam.vcam_reader as vcam_reader
-
-buffer = vcam_reader.init("handpose")
+cap = cv2.VideoCapture(0)
+cap.set(3, wCam)
+cap.set(4, hCam)
 
 pTime = 0
 
@@ -136,72 +132,66 @@ def publish_result(result):
     client.publish("handpose_recog", result)
     if not QUIET:
         print(f"-> Published '{result}'")
-    # last_results[i] = result
 
-try:
-    
-    while True:
+success = True
+while success:
 
-        client.loop(timeout=0.05)
+    client.loop(timeout=0.05)
 
-        # success, img = cap.read()
-        numHands, img = detector.findHands(buffer.copy())
+    success, img = cap.read()
+    if not success: break
+    numHands, img = detector.findHands(img.copy())
+
+    for i in range(numHands):
+        read_hand(img, handNo=i)
+
+    cTime = time.time()
+    fps = 1 / (cTime - pTime)
+    pTime = cTime
+
+    tinterval = time.time() - timer1
+    trefresh = time.time() - timer2
+
+    if trefresh > REFRESH_PUBLISH:
+        if DEBUG:
+            print("Refreshing publish")
+        for i in range(MAX_HANDS):
+            last_results[i] = __UNDEF
+        timer2 += trefresh
+
+    if tinterval > INTERVAL:
+
+        is_trigger_up = False
+        trigger_hand = -1
 
         for i in range(numHands):
-            read_hand(img, handNo=i)
-
-        cTime = time.time()
-        fps = 1 / (cTime - pTime)
-        pTime = cTime
-
-        tinterval = time.time() - timer1
-        trefresh = time.time() - timer2
-
-        if trefresh > REFRESH_PUBLISH:
-            if DEBUG:
-                print("Refreshing publish")
-            for i in range(MAX_HANDS):
-                last_results[i] = __UNDEF
-            timer2 += trefresh
-
-        if tinterval > INTERVAL:
-
-            is_trigger_up = False
-            trigger_hand = -1
-
-            for i in range(numHands):
-                result = evaluate(hands[i])
-                if result == TRIGGER_POSE and not is_trigger_up:
-                    is_trigger_up = True
-                    trigger_hand = i
-                    reset_hand(i)
-                    break
-
-            for i in range(numHands):
-                if i == trigger_hand:
-                    continue
-                hand = hands[i]
-                result = evaluate(hand)
-                if DEBUG:
-                    print(is_trigger_up, result)
-                if result != __UNDEF and result != last_results[i]:
-                    if not TRIGGER_POSE or (TRIGGER_POSE and is_trigger_up):
-                        publish_result(result)
-                        last_results[i] = result
+            result = evaluate(hands[i])
+            if result == TRIGGER_POSE and not is_trigger_up:
+                is_trigger_up = True
+                trigger_hand = i
                 reset_hand(i)
-                timer1 += tinterval
-
-        if DEBUG:
-            img = cv2.flip(img, 1)
-            # cv2.putText(img, f'FPS: {int(fps)}', (20, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
-            cv2.imshow("HandPose Cam", img)
-            if cv2.waitKey(1) & 0xFF == ord('q') or cv2.waitKey(1) & 0xFF == ord('Q'):
                 break
 
-# except KeyboardInterrupt:
-#     pass
+        for i in range(numHands):
+            if i == trigger_hand:
+                continue
+            hand = hands[i]
+            result = evaluate(hand)
+            if DEBUG:
+                print(is_trigger_up, result)
+            if result != __UNDEF and result != last_results[i]:
+                if not TRIGGER_POSE or (TRIGGER_POSE and is_trigger_up):
+                    publish_result(result)
+                    last_results[i] = result
+            reset_hand(i)
+            timer1 += tinterval
 
-finally:
-    # cap.release()
-    vcam_reader.close()
-    cv2.destroyAllWindows()
+    if DEBUG:
+        img = cv2.flip(img, 1)
+        # cv2.putText(img, f'FPS: {int(fps)}', (20, 50), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0), 3)
+        cv2.imshow("HandPose Cam", img)
+        if cv2.waitKey(1) & 0xFF == ord('q') or cv2.waitKey(1) & 0xFF == ord('Q'):
+            break
+
+cap.release()
+cv2.destroyAllWindows()
