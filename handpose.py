@@ -32,7 +32,8 @@ if not TRIGGER_POSE in defined_poses:
     print("unknown 'trigger_pose'. proceeding as if it was not defined.")
     TRIGGER_POSE = None
 
-broker_address = "localhost" #input("Broker address: ")
+# broker_address = "localhost"
+broker_address = input("Broker address: ")
 
 print("Attempting connection...")
 
